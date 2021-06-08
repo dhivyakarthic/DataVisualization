@@ -1,0 +1,372 @@
+---
+title: "Impact of COVID on school closures"
+author: "Dhivya"
+date: "18/08/2020"
+output:
+  slidy_presentation: default
+  ioslides_presentation: default
+  beamer_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+### Objective
+```{r}
+cat(paste("Objective :-","\n","\n","> To understand the school closures across the globe due to the pandemic.","\n","> To study if there is significant co-relation between School Closures and any of the following:","\n","  * Enrolment in public schools","\n","  * Income levels of the countries","\n","  * Geographical impact","\n","> Understanding the impact of income levels on education also contribute to a major part of this analysis."))
+
+cat(paste("Data Source :-","\n","\n","This is an open source dataset published in Kaggle.","\n", "This data was provided by UNESCO and was captured from Jan-2020 to April 2020, across several countries.","\n", "Illustration and observations were arrived based on the dataset on Education and COVID."))
+
+cat(paste("Data Description :-" , "\n","\n","The Dataset contains information about the closure of schools around the globe such as status and date of closing.","\n","It also contains the No. of students enrolled in various levels of school around the globe in various countries.","\n","Figures correspond to the number of learners enrolled at pre-primary, primary, secondary as well as","\n","at tertiary education levels."))
+```
+####### Dataset :- https://www.kaggle.com/landlord/education-and-covid19
+
+
+
+```{r include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(gmodels)
+#library(varhandle)
+library(stringr)
+library(RColorBrewer)
+library(forcats)
+#library(tidyverse)
+library(tidyr)
+library(leaflet)
+library(rgdal)
+library(leaflet.minicharts)
+library(ggalt)
+library(grid)
+library(gridExtra)
+library(plotly)
+library(highcharter)
+library(knitr)
+library(kableExtra)
+library(sf)
+library(gganimate)
+library(animation)
+library(tm)
+library(wordcloud)
+```
+
+
+```{r include=FALSE}
+### Fucntion to covert factors to numbers
+char_num <- function (x) {
+x <- as.character(x)  
+x <- as.numeric(gsub(",", "", x))
+}
+```
+
+
+```{r include=FALSE}
+#Import Dataset
+edu_cov_temp <- read.csv("C:/Users/Admin/OneDrive - Indian Institute of Management(1)/Dhivya-Personal/DV-B2/Datasets/mydata/education_COVID19.csv")
+
+edu_cov <- edu_cov_temp %>% select(-Dt.Extraction, -Year.Pre, -Year.Prm, -Year.Sec, -Year.Ter)
+
+#Convert the school closed column as "Date" column
+edu_cov$Closed_Date <- as.Date(edu_cov$Closed,format="%d-%m-%y" )
+
+#Omit the null values in the dataframe
+edu_cov_na <- na.omit(edu_cov)
+colnames(edu_cov_na)[2] <- "Country"
+
+#Change column names of month
+edu_cov_na$Month <- format(edu_cov_na$Closed_Date,"%m")
+edu_cov_na$Month[which(edu_cov_na$Month=="01")] <- "January"
+edu_cov_na$Month[which(edu_cov_na$Month=="02")] <- "February"
+edu_cov_na$Month[which(edu_cov_na$Month=="03")] <- "March"
+edu_cov_na$Month[which(edu_cov_na$Month=="04")] <- "April"
+
+edu_cov_na$Month <- factor(edu_cov_na$Month, levels = month.name)
+edu_cov_na$Income <- factor(edu_cov_na$Income, levels = c("Low income", "Lower middle income", "Upper middle income", "High income", ""))
+#unique(edu_cov_na$Month)
+#Convert the factors to numbers
+edu_cov_na$Total_Enrol <- char_num(edu_cov_na$Enrollment)
+edu_cov_na$Pre_Prim_Enrol <- char_num(edu_cov_na$Se.Pre.Enrl)
+edu_cov_na$Prm_Enrol <- char_num(edu_cov_na$Se.Prm.Enrl)
+edu_cov_na$Sec_Enrol <- char_num(edu_cov_na$Se.Sec.Enrl)
+edu_cov_na$Ter_Enrol <- char_num(edu_cov_na$Se.Ter.Enrl)
+
+edu_cov_na$Inc_Rng <- ifelse(edu_cov_na$Income=="Low income", 0, ifelse(edu_cov_na$Income=="Lower middle income", 1, ifelse(edu_cov_na$Income=="Upper middle income", 2,3)))
+
+edu_cov_na$closenum <- ifelse(edu_cov_na$CloseStatus=="Closed", 0, ifelse(edu_cov_na$CloseStatus=="Closed(in select areas)", 1, 0))
+
+#edu_cov_na %>% View()
+unique(edu_cov_na$Income)
+
+#edu_cov_na %>% View()
+
+#Change column names of regions
+edu_cov_na$Region <- as.character(edu_cov_na$Region)
+edu_cov_na$Region[which(edu_cov_na$Region=="East Asia and Pacific")] <- "E.Asia & Pacific"
+edu_cov_na$Region[which(edu_cov_na$Region=="Europe and Central Asia")] <- "Europe & Cntl. Asia"
+edu_cov_na$Region[which(edu_cov_na$Region=="Middle East and North Africa")] <- "Mid.East & N. Africa"
+edu_cov_na$Region[which(edu_cov_na$Region=="Latin America and Caribbean")] <- "Latin America"
+edu_cov_na$Region[which(edu_cov_na$Region=="Sub-Saharan Africa")] <- "Saharan Africa"
+
+#edu_cov_na$Region[1] <- "Europe & Cntl Asia"
+#edu_cov_na$Region[2] <- "E. Asia & Pacific"
+#edu_cov_na$Region[3] <- "Mid.E & N Africa"
+#edu_cov_na$Region[5] <- "Latin America"
+#edu_cov_na$Region[6] <- "Nor. America"
+#edu_cov_na$Region[7] <- "Saharan Africa"
+
+```
+
+### Overview of School Closures
+```{r include=FALSE}
+
+pal_CloseSt1 = colorFactor(palette = c("forestgreen","limegreen","firebrick3","orange", "slateblue"), domain = edu_cov_na$CloseStatus)
+
+world_shapefiles <- read_sf(dsn = "C:/Users/Admin/OneDrive - Indian Institute of Management(1)/Dhivya-Personal/Linkedin Learning/R/Ex_Files_R_Interactive_Vis_Widgets/Exercise Files/02_07/data-raw/world-shape-files/ne_50m_admin_0_countries.shp")
+edu_cov_na_dp <- edu_cov_na
+edu_cov_na_dp <- edu_cov_na_dp %>% rename(name=Country) 
+edu_cov_na_dp$name <- as.character(edu_cov_na_dp$name)
+
+#world_shapefiles <- world_shapefiles %>% rename(Country.Name=name)
+#world_shapefiles
+edu_cov_sh <- world_shapefiles %>% left_join(edu_cov_na_dp) 
+```
+
+```{r echo=FALSE}
+edu_cov_sh %>% leaflet() %>% addPolygons(stroke = FALSE, smoothFactor = 0.2, fillOpacity = 0.9, popup = ~paste("Country", name), color = "white",fillColor = ~pal_CloseSt1(CloseStatus), dashArray = "3", label = ~name,
+  highlight = highlightOptions(weight = 5, color = "#666", fillOpacity = 0.6, dashArray = "", bringToFront = TRUE)) %>% addLegend(pal=pal_CloseSt1, values=~CloseStatus, title = "Schools Closure Status", position = "bottomleft")
+
+cat(paste("Inference :-", "\n", "1. School Closures does not seem to be based on the geographic location.","\n","2. There is a mix of school closures across the different regions."))
+```
+
+
+### Global Level Analysis
+```{r echo=FALSE, fig.width=10, fig.height=5}
+#Global Charts
+
+#Income level across countries - data
+#print("Income level across Countries")
+edu_inc <- edu_cov_na %>% filter(!Income=="") %>% group_by(Income) %>% summarise(Income_levels=n())
+g1 <- edu_inc %>% ggplot(aes(x=reorder(Income,-Income_levels),y=Income_levels)) + geom_bar(stat='identity', fill='steelblue', width=0.5) + theme_classic()  +xlab("")+ylab("No. of countries") + theme(axis.text.x = element_text(angle=45, hjust=1)) + labs(title = "Income level across countries")
+
+#Distribution of enrolments
+#print("Distribution of enrolment - across countries")
+g2 <- edu_cov_na %>% ggplot(aes(y=(Total_Enrol/100000))) + geom_boxplot(color='steelblue') + scale_y_sqrt() + ylab("Enrolment in Schools-in laks") + theme_classic() + labs(title = "Distribution of Enrolments")
+#Mean and Median of the distribution
+M_Enr <- mean(edu_cov_na$Total_Enrol, na.rm = T)
+M_Enr <- round(M_Enr)
+#print(M_Enr)
+Med_Enr <- median(edu_cov_na$Total_Enrol, na.rm = T)
+
+
+#School Closure Status
+#print("School Closure Status - across countries")
+g3 <- edu_cov_na %>% group_by(CloseStatus) %>% summarise(School_Status=n()) %>% ggplot(aes(x=reorder(CloseStatus,School_Status), y=School_Status)) + geom_bar(stat='identity', fill='forestgreen', width=0.5) + theme_classic() + xlab("") + ylab("No. of countries") + theme(axis.text.x = element_text(angle=45, hjust=1)) + labs(title = "Schools Closure status")
+
+#Global level charts
+grid.arrange(g1,g2,g3,ncol=3)
+
+
+#Inference
+cat(paste("Inference", "\n", "1. Majority of the countries across the globe fall under the high-income category.", "\n", "2. Mean enrolments in Public schools across the globe :-", M_Enr, "\n","3. Median of enrolments in Public schools across the globe :- ", Med_Enr, "\n", "4. Most of the countries have closed their schools due to the pandemic."))
+
+```
+
+### Region (Cotinent) Level Analysis
+
+```{r echo=FALSE, fig.width=10, fig.height=5}
+#Income level across regions
+
+edu_cov_na %>% filter(!Income=="") %>% filter(!Region=="") %>% group_by(Region,Income) %>% summarise(Income_levels=n()) %>% ggplot(aes(x=reorder(Income,-Income_levels),y=Income_levels, fill=Income)) + geom_bar(stat='identity') + theme_bw() + theme(axis.text.x = element_text(angle=45,hjust=1)) + facet_grid(~Region, scale="free") + xlab("")+ylab("No. of countries") + labs(title = "Income levels - Region wise")
+
+#Inference
+cat(paste("Inference", "\n", "1. Most of the European countries fall under the high-income category.", "\n", "2. All the North American countries fall under the high-income category.","\n","3. The low-income countries are primarily the countries in Saharan Africa.", "\n", "4. The income levels in South Asia ranges closely between the upper-middle-income to low-income categories.", "\n", "5. The number of South Asian countries in the low-income & upper-middle-income are nearly the same."))
+```
+### Region (Cotinent) Level Analysis
+
+```{r echo=FALSE, fig.height=3, fig.width=10}
+#Distribution of enrolment across regions
+edu_cov_na %>% filter(!Region=="") %>% group_by(Region) %>% ggplot(aes(y=(Total_Enrol/100000))) + geom_boxplot(color="forestgreen") + scale_y_sqrt() + facet_grid(~Region) + ylab("Enrolment in Schools-in laks") + theme_classic() + labs(title = "Distribution of Enrolments - Region wise") + theme(axis.text.x = element_blank()) + theme( panel.grid.major = element_line(colour = "lightgrey", size =0.25))
+
+
+#Distribution of enrolment across regions (income-wise)
+edu_cov_na %>% filter(!Region=="") %>% group_by(Region) %>% ggplot(aes(y=(Total_Enrol/100000), color=Income)) + geom_boxplot() + scale_y_sqrt() + facet_grid(~Region) + ylab("Enrolment in Schools-in laks") + theme_classic() + labs(title = "Distribution of Enrolments - Region wise, income wise") + theme(axis.text.x = element_blank()) + theme(legend.position="bottom", legend.box = "horizontal") + theme( panel.grid.major = element_line(colour = "lightgrey", size =0.25))
+
+
+#Mean and Median of enrolments
+dist_enrol <- edu_cov_na %>% filter(!Region=="") %>% group_by(Region) %>% summarise(Mean_Enrolments=round(mean(Total_Enrol,na.rm = T)), Median_Enrolments=round(median(Total_Enrol,na.rm=T))) %>% arrange(-Mean_Enrolments)
+
+#dist <- dist_enrol %>% kable() %>% kable_styling()
+#dist
+
+```
+![](../DV_My visuals/snippets/region_wise_enrol.PNG)
+
+```{r}
+#Inference
+cat(paste("Inference", "\n", "1. Mean enrolment in schools is hightest in South Asia. This could be due to the outlier with maximum enrolments.", "\n","2. The mean of enrolments in South Asia and North America are similar.", "\n", "However, the mean in the South Asian lower-middle-income category is significantly higher than North Americas.","\n","3. Europe, having significantly more number of countries in the high-income category have","\n","the least enrolment in schools across the globe.","\n", "4. The high-income countries in the Saharan Africa have the lowest enrolment in schools."))
+
+```
+
+### Region (Cotinent) Level Analysis
+
+```{r echo=FALSE, fig.width=10, fig.height=4.5}
+#School Closure Status across regions
+edu_cov_na %>% filter(!Region=="") %>% group_by(Region,CloseStatus) %>% summarise(School_Status=n()) %>% ggplot(aes(x=reorder(CloseStatus,School_Status), y=School_Status)) + geom_bar(stat='identity', fill='forestgreen') + theme_classic() + facet_grid(~Region, scale="free") + xlab("") + ylab("No. of countries") + theme(axis.text.x = element_text(angle=45,hjust=1)) + labs(title = "Schools Closure status - Region wise") + theme( panel.grid.major = element_line(colour = "lightgrey", size =0.25))
+
+#School Closure Status across regions
+edu_cov_na %>% filter(!Region=="") %>% filter(!Income=="") %>% group_by(Region,Income,CloseStatus) %>% summarise(School_Status=n()) %>% ggplot(aes(x=reorder(CloseStatus,School_Status), y=School_Status, fill=Income)) + geom_bar(stat='identity') + theme_classic() + facet_grid(~Region, scale="free") + xlab("") + ylab("No. of countries") + theme(axis.text.x = element_text(angle=45,hjust=1)) + labs(title = "Schools Closure status - Region wise, income wise") + theme( panel.grid.major = element_line(colour = "lightgrey", size =0.25)) + theme(legend.position="bottom", legend.box = "horizontal")
+
+#Inference
+cat(paste("Inference", "\n", "1. Latin America tops the school closures due to the pandemic, followed by the countries in Saharan Africa.", "\n","2. All the schools in South Asia were closed due to the pandemic.", "\n", "3. European schools, especially, from a considerable number of high-income countries,","\n","have remained open with limitations.","\n", "Could this be an indicator that the high-income countries pursue a stronger economy?"))
+```
+
+### Schools Closure based on timeline
+
+```{r echo=FALSE, fig.width=10, fig.height=4.5}
+col_enrl <- c('deepskyblue3','green','indianred1','darkorange2', 'grey')
+
+#When did the schools close - region wise
+edu_cov_t <- edu_cov_na %>% filter(!Region == "") %>% group_by(Closed_Date,Region,CloseStatus) %>% summarise(Closure_Status=n())
+g2 <- edu_cov_t %>% ggplot(aes(x=Closed_Date,y=Closure_Status,fill=CloseStatus)) +  geom_bar(stat='identity', position = 'dodge') + xlab("Months - 2020") + ylab("Number of countries") + theme_minimal() + scale_fill_manual(values=col_enrl) + theme(legend.position="bottom", legend.box = "horizontal") + labs(title = "Schools Closure status")
+
+ggplotly(g2)
+
+#When did the schools close - region wise
+edu_cov_t <- edu_cov_na %>% filter(!Region == "") %>% group_by(Month,Region,CloseStatus) %>% summarise(Closure_Status=n())
+
+
+edu_cov_t %>% ggplot(aes(x=Region,y=Closure_Status,fill=CloseStatus)) +  geom_bar(stat = 'identity', position='dodge') + facet_grid(~Month, scale="free") + xlab("Region") + ylab("Number of countries") + theme_classic() + scale_fill_manual(values=col_enrl) + theme(axis.text.x = element_text(angle=45, hjust =1))  + labs(title = "Schools Closure status - Region wise") + theme( panel.grid.major = element_line(colour = "lightgrey", size =0.25)) + theme(legend.position="bottom", legend.box = "horizontal")
+
+#Inference
+cat(paste("Inference", "\n", "1. School Closure started as early as January in East Asia, indicating the outbreak of COVID in China.", "\n", "2. School Closures were at a peak, in March 2020, synonymous with the lockdown.","\n","3. While most countries shut down their schools in March, several countries in Eurpoe and Central Asia, ","\n", "and quite a few countries in Saharan Africa have been operating with limitations." ))
+
+```
+
+### Effect of Enrolments on School Cloure - Location wise
+```{r echo=FALSE, fig.height=5}
+
+# Color palette for School Closed Status
+pal_CloseSt = colorFactor(palette = c("forestgreen","green","red","darkorange3", "darkgrey"), domain = edu_cov_na$CloseStatus)
+
+#Range for enrolments
+edu_cov_na$enrlrange <- cut(edu_cov_na$Total_Enrol, breaks = c(140,100000,1000000,10000000,100000000,1000000000), right=FALSE, labels = c("Below 10L", "1L to 10L", "10L to 1C", "Above 1C", "Above 10C"))
+
+#Unique ClosedStatus
+cs <- unique(edu_cov_na$CloseStatus)
+#cs %>% View()
+
+
+m2 <- leaflet() %>% addTiles() %>% addCircleMarkers(data = edu_cov_na, lat=~Latitude..generated., lng = ~Longitude..generated., color = ~pal_CloseSt(CloseStatus), radius = ~ifelse(Total_Enrol<10000, 3, ifelse(Total_Enrol<100000,4, ifelse(Total_Enrol<1000000,5, ifelse(Total_Enrol<10000000,6,7)))), stroke = FALSE, fillOpacity = 0.75, popup = ~Country, label = ~paste("Country:",Country, "|",                     "Enrl:",enrlrange)) %>% addLegend("bottomleft", pal = pal_CloseSt, values = edu_cov_na$CloseStatus, title = "School Closure")
+
+m2
+
+
+#leaflet() %>% addProviderTiles(providers$Esri.WorldGrayCanvas) %>% addCircleMarkers(data = edu_cov_na, lat=~Latitude..generated., lng = ~Longitude..generated., color = ~pal_CloseSt(CloseStatus), radius = ~ifelse(Total_Enrol<10000, 3, ifelse(Total_Enrol<100000,4, ifelse(Total_Enrol<1000000,5, ifelse(Total_Enrol<10000000,6,7)))), stroke = FALSE, fillOpacity = 0.5, popup = ~Country.Name, label = ~paste("Country:", Country.Name, "<br/>", "Enrol.:", enrlrange, "/<br/>", "Income:", Income)) %>% addLegend("bottomleft", pal = pal_CloseSt, values = edu_cov_na$CloseStatus, title = "School Closure")
+
+enrl_loc_chart <- edu_cov_na %>% filter(!Income=="") %>% group_by(Income, Region, CloseStatus) %>% summarise(Tot_Enrolment=sum(Total_Enrol, na.rm=T)) %>% ggplot(aes(x=reorder(Region,Tot_Enrolment,sum),y=Tot_Enrolment/100000, fill=CloseStatus)) +  geom_bar(stat='identity', position='stack', width=0.3) + ylab("Total Enrollments in laks") + xlab("Region")  + theme_classic() + scale_fill_manual(values=col_enrl) + coord_flip() + theme(legend.position="bottom", legend.box = "horizontal") + labs(title = "Enrolment vs School Closure - Region wise")
+
+ggplotly(enrl_loc_chart)
+
+#enrl_loc_chart1 <- edu_cov_na %>% filter(!Income=="") %>% group_by(Country.Code,CloseStatus) %>% summarise(Avg_Enrolment=mean(Total_Enrol, na.rm=T)) %>% ggplot(aes(x=reorder(Country.Code,Avg_Enrolment,sum),y=Avg_Enrolment/100000, fill=CloseStatus)) +  geom_bar(stat='identity', position='stack', width=0.3) + ylab("Average Enrollments in laks") + xlab("Region")  + theme_classic() + scale_fill_manual(values=col_enrl) + coord_flip() + theme(legend.position="bottom", legend.box = "horizontal")
+
+#ggplotly(enrl_loc_chart1)
+
+#Enrolments vs Closure - Region wise - high chart
+#enrl_loc <- edu_cov_na %>% filter(!Income=="") %>% group_by(Country.Name,CloseStatus) %>% summarise(Avg_Enrolment=mean(Total_Enrol, na.rm=T))
+#enrl_loc %>% hchart(type="bar", hcaes(x=Country.Name, y=Avg_Enrolment,group=CloseStatus)) 
+
+#Inference
+cat(paste("Inference", "\n", "1. The size of the circles indicate the number of enrollments.","\n", "2. With high enrolments in the South Asian regions and moderate enrolments in South American countries,","\n","schools have remained closed.", "\n", "3. African region have nominal enrolments & varied school closure statuses.","\n","4. European region have low to moderate enrolments and most schools have remained open","\n","(most of them, with limitations).", "\n","5. Schools in East Asia with the highest enrolments have functioned with limitations. ","\n","\n", "Summary :-","\n","The number of enrolments in public schools does not seem to contibute to the closure of schools,","\n","irrespective of the schools' or students' access to online or other alternate methods of eductaion."))
+
+```
+
+### Effect of Income on School Cloure - Location wise
+```{r echo=FALSE, fig.height=5}
+
+m3 <- leaflet() %>% addTiles() %>% addCircleMarkers(data = edu_cov_na, lat=~Latitude..generated., lng = ~Longitude..generated., color = ~pal_CloseSt(CloseStatus), radius = ~ifelse(Income=="Low income", 3, ifelse(Income=="Lower middle income",4.5, ifelse(Income=="Upper middle income",6,8))), stroke = FALSE, fillOpacity = 0.75, popup = ~Country, label = ~paste("Country:",Country, "|",                     "Income:",Income)) %>% addLegend("bottomleft", pal = pal_CloseSt, values = edu_cov_na$CloseStatus, title = "School Closure")
+m3
+
+inc_loc_chart <- edu_cov_na %>% filter(!Income=="") %>% group_by(Income, CloseStatus) %>% summarise(Tot_Enrolments=sum(Total_Enrol, na.rm = T)) %>% 
+ggplot(aes(x=Income,y=Tot_Enrolments/100000, fill=CloseStatus)) +  geom_bar(stat='identity', position='stack', width=0.3) + coord_flip() + ylab("Total Enrollments - in laks") + xlab("Income Level")  + theme_classic() + scale_fill_manual(values=col_enrl) + theme(legend.position="bottom", legend.box = "horizontal") + labs(title = "Income levels vs School Closure - Region wise")
+ggplotly(inc_loc_chart)
+
+#Inference
+cat(paste("Inference", "\n", "1. The size of the circles indicate the Income level.","\n", "2. Schools in the lower-middle-income countries have been closed, though the enrolment count","\n","is highest in these countries.","\n", "This is contradictory to the fact about the inherent 'digital divide' in the developing/under-developed countries.", "\n","Data about the size and facilities of these schools may have to be analysed to understand","\n","if the schools were closed, because it was not possible to follow the said norms to contain the pandemic. ","\n","3. Schools continued to be 'open with limitations' in the upper middle income & high income countries. ","\n","Data on the economic health of these countries may have to be analysed, to derive at a conclusion.", "\n","\n", "Summary :-","\n","The income levels vs school closure is inconclusive."))
+```
+
+### Does income levels affect the enrolments?
+```{r include=FALSE}
+#### Pre-Primary vs Primary Enrolments
+
+db1 <- edu_cov_na %>% filter(!Income=="") %>% group_by(Income) %>%  summarise(Pre_Primary=mean(Pre_Prim_Enrol/100000, na.rm = T), Primary=mean(Prm_Enrol/100000, na.rm=T)) 
+
+
+c1 <- ggplot(db1, aes(x=Pre_Primary, xend=Primary, y=Income, group=Income)) + geom_dumbbell(color='gray',size=1.75,colour_x="forestgreen", colour_xend = "darkorange2") + theme_minimal() + xlab("Avg. Enrolments-in laks") + geom_text(db1, mapping=aes(x=Pre_Primary, y=Income,label=ifelse(Income=="High income", "Primary", " ")), color="darkorange2", hjust=2.3, size=3, nudge_x=25, nudge_y = 0.3) + geom_text(db1, mapping=aes(xend=Primary, y=Income,label=ifelse(Income=="High income", "Pre-Primary", " ")), color="darkgreen", hjust=-0.2, size=3, nudge_x=-30, nudge_y = 0.3) + scale_x_reverse()
+
+#### Primary vs Secondary Enrolments
+
+db2 <- edu_cov_na %>% filter(!Income=="") %>% group_by(Income) %>%  summarise(Primary=mean(Prm_Enrol/100000, na.rm = T), Secondary=mean(Sec_Enrol/100000, na.rm=T)) 
+
+
+c2 <- ggplot(db2, aes(x=Primary, xend=Secondary, y=Income, group=Income)) + geom_dumbbell(color='gray',size=1.75,colour_x="darkorange2", colour_xend = "darkblue") + theme_minimal() + xlab("Avg. Enrolments-in laks") + geom_text(db2, mapping=aes(x=Primary, y=Income,label=ifelse(Income=="High income", "Primary", " ")), color="darkorange2", hjust=2.3, size=3, nudge_x=25, nudge_y = 0.3) + geom_text(db2, mapping=aes(xend=Secondary, y=Income,label=ifelse(Income=="High income", "Secondary", " ")), color="darkBlue", hjust=-0.4, size=3, nudge_x=-25, nudge_y = 0.3) + scale_x_reverse() + theme(axis.title.y = element_blank())
+
+#### Secondary vs Tertiary Enrolments
+
+db3 <- edu_cov_na %>% filter(!Income=="") %>% group_by(Income) %>%  summarise(Secondary=mean(Sec_Enrol/100000, na.rm = T), Tertiary=mean(Ter_Enrol/100000, na.rm=T)) 
+
+
+c3 <- ggplot(db3, aes(x=Secondary, xend=Tertiary, y=Income, group=Income)) + geom_dumbbell(color='gray',size=1.75,colour_x="darkblue", colour_xend = "red") + theme_minimal() + xlab("Avg. Enrolments- in laks") + geom_text(db3, mapping=aes(x=Secondary, y=Income,label=ifelse(Income=="High income", "Secondary", " ")), color="darkBlue", hjust=1.75, size=3, nudge_x=25, nudge_y = 0.3) + geom_text(db3, mapping=aes(xend=Tertiary, y=Income,label=ifelse(Income=="High income", "Tertiary", " ")), color="darkred", hjust=-1.25, size=3, nudge_x=-25, nudge_y = 0.3) + scale_x_reverse() + theme(axis.title.y = element_blank())
+
+```
+
+```{r echo=FALSE, fig.width=10, fig.height=4}
+grid.arrange(c1,c2,c3,ncol=3) 
+
+#Inference
+cat(paste("Inference", "\n", "1. Pre-Primary enrolments are lowest across all income levels.","\n","It is common to enrol kids in the school, directly in the Primary level.", "\n","2. Starting from the Primary level, the number of enrolments have reduced in the subsequent school levels,","\n","across all the income categories.","\n","3. Enrolment across all the school levels are highest in the lower-middle-income category.","\n","\n","Summary :-","\n","1. Low income category can be excluded, owing to affordability to school education.", "\n", "2. Considering only the high-income, upper-middle-income & lower-middle-income categories,","\n","there is an 'inverse co-relation' between the income levels and the enrolment in schools.","\n", "3. The dropouts at each school level also seem to have an 'inverse co-relation' with the income level."))
+```
+
+### Regions vs Enrolements vs Income levels vs School Closure
+```{r echo=FALSE, fig.height=5, fig.width=10}
+edu_cov_na %>% filter(!Income=="") %>% group_by(Income, Region, CloseStatus) %>% summarise(Avg_Enrolments=mean(Total_Enrol, na.rm = T)) %>% 
+ggplot(aes(x=reorder(Region,-Avg_Enrolments),y=Avg_Enrolments/100000, fill=CloseStatus)) +  geom_bar(stat='identity', position='stack', width = 0.3) + ylab("Average Enrollments-in laks") + xlab("Region")  + theme_classic() + scale_fill_manual(values=col_enrl) + facet_grid(~Income, scale="free") + theme(axis.text.x = element_text(angle=90, hjust=1)) + theme( panel.grid.major = element_line(colour = "lightgrey", size =0.25)) + theme(legend.position="bottom", legend.box = "horizontal")+ scale_y_sqrt()
+#ggplotly(all_comp) 
+
+#Inference
+cat(paste("Inference :-", "\n", "1. East Asian countries that fall under the upper-middle-income level have significantly more enrolments","\n","and schools functioning with limitations.","\n","\n","2.Except the East Asian countries, the enrolments are significantly lower in the other ","\n","upper-middle-income countries.","\n","\n","3. Similarly, expect the North American countries, the rest of the countries in the high-income level ","\n","have significantly lower enrolment in public schools.","\n","\n","4. Schools in the Saharan African countries, irrespective of the income levels were either","\n","open with limitations or closed only in selected areas.","\n","This could be an indicator of non-access to the digital or alternate methods of education","\n","or lesser impact of the pandemic.","\n","\n","5. All the schools, across all the South Asian countries and across all the income levels, have remained closed."))
+
+```
+
+### Summary
+```{r}
+cat(paste("1. The enrolment in public schools is not directly related to the closure of schools.","\n", "2. The enrolment in public schools seem to have an inverse-corelation with the income levels of the country.","\n","3. The relationship between income levels and school closure is inconclusive.","\n","Data on the economic health of the countries are to be studied to understand the underlying factors.","\n","4. There is no significant relationship between the geographic location and the school closures."))
+```
+
+#### Dhivya Karthic
+```{r}
+cat(paste("Subject Matter Expert, Data Visualization (IIT Madras)","\n"," Program Manager, CTM (Certificate Programme in Technology & Management)","\n", "   (CTM - a joint programme by IIT Madras & IIM Bangalore - https://ctm-iitm.iimbx.edu.in/)"))
+```
+
+##### https://www.linkedin.com/in/dhivyakarthic/ 
+
+```{r include=FALSE}
+wc <- read.csv("C:/Users/Admin/OneDrive - Indian Institute of Management(1)/Dhivya-Personal/Dhivya_DV/DV_My visuals/wordcloud/wordcloud_data.csv")
+
+wc$wc_text <- as.character(wc$wc_text)
+wc$wc_text <- tolower(wc$wc_text)
+wc$wc_text <- gsub('[^a-z ]','',wc$wc_text)
+
+wc_word_list <- strsplit(wc$wc_text,' ')
+wc_words <- unlist(wc_word_list)
+wc_word_table <- table(wc_words)
+
+wc_words_df <- as.data.frame(wc_word_table)
+stop_words <- stopwords()
+wc_words_df <- wc_words_df %>% filter(!wc_words %in% stop_words) %>% filter(!wc_words=="") %>% arrange(-Freq)
+
+wc_words_df %>% View()
+
+wordcloud(wc_words_df$wc_words, wc_words_df$Freq, min.freq = 2,colors = brewer.pal(7, "Dark2"), random.order = FALSE)
+```
+
